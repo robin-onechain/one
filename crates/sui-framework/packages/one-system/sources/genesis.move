@@ -6,7 +6,7 @@ module one_system::genesis;
 use one::balance::{Self, Balance};
 use one::oct::OCT;
 use one_system::stake_subsidy;
-use one_system::sui_system;
+use one_system::one_system;
 use one_system::sui_system_state_inner;
 use one_system::validator::{Self, Validator};
 use one_system::validator_set;
@@ -17,6 +17,7 @@ public struct GenesisValidatorMetadata has copy, drop {
     image_url: vector<u8>,
     project_url: vector<u8>,
     sui_address: address,
+    revenue_receiving_address:address,
     gas_price: u64,
     commission_rate: u64,
     protocol_public_key: vector<u8>,
@@ -69,7 +70,7 @@ const EDuplicateValidator: u64 = 1;
 /// It will create a singleton SuiSystemState object, which contains
 /// all the information we need in the system.
 fun create(
-    sui_system_state_id: UID,
+    //sui_system_state_id: UID,
     mut sui_supply: Balance<OCT>,
     genesis_chain_parameters: GenesisChainParameters,
     genesis_validators: vector<GenesisValidatorMetadata>,
@@ -88,6 +89,7 @@ fun create(
             image_url,
             project_url,
             sui_address,
+            revenue_receiving_address,
             gas_price,
             commission_rate,
             protocol_public_key,
@@ -102,6 +104,7 @@ fun create(
 
         let validator = validator::new(
             sui_address,
+            revenue_receiving_address,
             protocol_public_key,
             network_public_key,
             worker_public_key,
@@ -163,7 +166,7 @@ fun create(
     );
 
     one_system::create(
-        sui_system_state_id,
+        //sui_system_state_id,
         validators,
         storage_fund,
         genesis_chain_parameters.protocol_version,
@@ -190,6 +193,7 @@ fun allocate_tokens(
                 validator.request_add_stake_at_genesis(
                     allocation_balance,
                     recipient_address,
+                    true,
                     ctx,
                 );
             } else {

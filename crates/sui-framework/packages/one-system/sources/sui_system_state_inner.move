@@ -16,9 +16,13 @@ use one_system::staking_pool::{StakedOct, FungibleStakedOct, PoolTokenExchangeRa
 use one_system::storage_fund::{Self, StorageFund};
 use one_system::validator::{Self, Validator};
 use one_system::validator_cap::{UnverifiedValidatorOperationCap, ValidatorOperationCap};
-use one_system::validator_set::{Self, ValidatorSet};
-use one::clock::Clock;
+use one_system::validator_set::{Self, ValidatorSet,UpdateTrustedValidatorsAction,UpdateOnlyTrustedValidatorAction,
+    UpdateOnlyValidatorStakingAction
+};
+use one_system::supper_committee::{Self,SupperCommittee,Proposal};
 use one::coin_vesting::CoinVesting;
+
+use one::clock::Clock;
 use std::type_name;
 
 const EUnsupportedActionType:u64 = 1;
@@ -237,6 +241,7 @@ public(package) fun create(
         epoch: 0,
         protocol_version,
         system_state_version: genesis_system_state_version(),
+        supper_committee: supper_committee::new(ctx),
         validators,
         storage_fund: storage_fund::new(initial_storage_fund),
         parameters,
@@ -360,13 +365,14 @@ public(package) fun request_add_validator_candidate(
     p2p_address: vector<u8>,
     primary_address: vector<u8>,
     worker_address: vector<u8>,
+    revenue_receiving_address:address,
     gas_price: u64,
     commission_rate: u64,
     ctx: &mut TxContext,
 ) {
     let validator = validator::new(
         ctx.sender(),
-        revenue_receiving_address, ///add
+        revenue_receiving_address, //add
         pubkey_bytes,
         network_pubkey_bytes,
         worker_pubkey_bytes,
@@ -538,15 +544,26 @@ public(package) fun request_add_stake_mul_coin(
     ctx: &mut TxContext,
 ): StakedOct {
     let balance = extract_coin_balance(stakes, stake_amount, ctx);
-    self.validators.request_add_stake(validator_address, balance, ctx)
+    self.validators.request_add_stake(validator_address, balance,false, ctx)
+}
+
+public(package) fun request_add_val_stake_mul_coin(
+    self: &mut SuiSystemStateInnerV2,
+    cap: &UnverifiedValidatorOperationCap,
+    stakes: vector<Coin<OCT>>,
+    stake_amount: option::Option<u64>,
+    ctx: &mut TxContext,
+) : StakedOct {
+    let balance = extract_coin_balance(stakes, stake_amount, ctx);
+    self.validators.request_add_stake(*cap.unverified_operation_cap_address(), balance, false,ctx)
 }
 
 /// Withdraw some portion of a stake from a validator's staking pool.
 public(package) fun request_withdraw_stake(
     self: &mut SuiSystemStateInnerV2,
     staked_oct: StakedOct,
-    ctx: &TxContext,
-): Balance<OCT> {
+    ctx: &mut TxContext,
+): (Balance<OCT>,Option<CoinVesting<OCT>>){
     self.validators.request_withdraw_stake(staked_oct, ctx)
 }
 
@@ -630,7 +647,7 @@ fun undo_report_validator_impl(
         validator_report_records.remove(&reportee_addr);
     }
 }
-    ///add
+    //add
    // ==== supper committer proposal functions ====
 
 public(package) fun create_update_trusted_validator_proposal(

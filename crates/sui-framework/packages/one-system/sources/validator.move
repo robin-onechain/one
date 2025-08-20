@@ -72,6 +72,11 @@ const MAX_VALIDATOR_GAS_PRICE: u64 = 100_000;
 const LOCK_CLIFF_EPOCH: u64 = 180;  
 const LOCK_INTERVAL_EPOCH: u64 = 30;
 const LOCK_PERIOD: u64 = 24;
+//add
+const EOnlyValidatorStake: u64 = 201;
+const EValidatorStakeClosed: u64 = 202;
+const EStakedOctIsLock: u64 = 203;
+const EStakedOctNotLock: u64 = 204;
 
 public struct ValidatorMetadata has store {
     /// The Sui Address of the validator. This is the sender that created the Validator object,
@@ -167,7 +172,7 @@ public struct UnstakingRequestEvent has copy, drop {
 public struct ConvertingToFungibleStakedOctEvent has copy, drop {
     pool_id: ID,
     stake_activation_epoch: u64,
-    fungible_staked_oct_amount: u64,
+    staked_oct_principal_amount: u64,
     fungible_staked_oct_amount: u64,
 }
 
@@ -180,7 +185,6 @@ public struct RedeemingFungibleStakedOctEvent has copy, drop {
 
 public(package) fun new_metadata(
     sui_address: address,
-    revenue_receiving_address: address, ///add
     protocol_pubkey_bytes: vector<u8>,
     network_pubkey_bytes: vector<u8>,
     worker_pubkey_bytes: vector<u8>,
@@ -223,6 +227,7 @@ public(package) fun new_metadata(
 
 public(package) fun new(
     sui_address: address,
+    revenue_receiving_address: address,
     protocol_pubkey_bytes: vector<u8>,
     network_pubkey_bytes: vector<u8>,
     worker_pubkey_bytes: vector<u8>,
@@ -272,7 +277,7 @@ public(package) fun new(
 
     // Checks that the keys & addresses & PoP are valid.
     metadata.validate();
-    metadata.new_from_metadata(revenue_receiving_address,true, gas_price,commission_rate, ctx)///update
+    metadata.new_from_metadata(revenue_receiving_address,true, gas_price,commission_rate, ctx)//update
 }
 
 /// Mark Validator's `StakingPool` as inactive by setting the `deactivation_epoch`.
@@ -306,6 +311,7 @@ public(package) fun request_add_stake(
     self: &mut Validator,
     stake: Balance<OCT>,
     staker_address: address,
+    is_validator: bool,//add
     ctx: &mut TxContext,
 ): StakedOct {
     if (self.only_validator_staking) {
@@ -324,7 +330,7 @@ public(package) fun request_add_stake(
 public(package) fun request_add_stake_no_check(
     self: &mut Validator,
     stake: Balance<OCT>,
-    staker_address: address,ß
+    staker_address: address,
     is_validator: bool,
     ctx: &mut TxContext,
 ) : StakedOct {
@@ -357,13 +363,13 @@ public(package) fun convert_to_fungible_staked_oct(
 ): FungibleStakedOct {
     assert!(!staked_oct.lock(), EStakedOctIsLock);
     let stake_activation_epoch = staked_oct.activation_epoch();
-    let fungible_staked_oct_amount = staked_oct.amount();
+    let staked_oct_principal_amount = staked_oct.amount();
     let fungible_staked_oct = self.staking_pool.convert_to_fungible_staked_oct(staked_oct, ctx);
 
     event::emit(ConvertingToFungibleStakedOctEvent {
         pool_id: self.staking_pool_id(),
         stake_activation_epoch,
-        fungible_staked_oct_amount,
+        staked_oct_principal_amount,
         fungible_staked_oct_amount: fungible_staked_oct.value(),
     });
 
@@ -394,7 +400,7 @@ public(package) fun request_add_stake_at_genesis(
     self: &mut Validator,
     stake: Balance<OCT>,
     staker_address: address,
-    lock: bool,  ///add
+    lock: bool,  //add
     ctx: &mut TxContext,
 ) {
     assert!(ctx.epoch() == 0, ECalledDuringNonGenesis);
@@ -402,7 +408,7 @@ public(package) fun request_add_stake_at_genesis(
     assert!(stake_amount > 0, EInvalidStakeAmount);
 
     // 0 = genesis epoch
-    let staked_oct = self.staking_pool.request_add_stake(stake, 0, lock, ctx); ///update
+    let staked_oct = self.staking_pool.request_add_stake(stake, 0, lock, ctx); //update
 
     transfer::public_transfer(staked_oct, staker_address);
 
@@ -415,12 +421,12 @@ public(package) fun request_add_stake_at_genesis(
 public(package) fun request_withdraw_stake(
     self: &mut Validator,
     staked_oct: StakedOct,
-    ctx: &TxContext,
-): (Balance<OCT>,Option<CoinVesting<OCT>>) { ///update
-    let lock = staked_oct.lock();   ///add
+    ctx: &mut TxContext,
+): (Balance<OCT>,Option<CoinVesting<OCT>>) { //update
+    let lock = staked_oct.lock();   //add
     let principal_amount = staked_oct.amount();
     let stake_activation_epoch = staked_oct.activation_epoch();
-    let mut withdrawn_stake = self.staking_pool.request_withdraw_stake(staked_oct, ctx);///update
+    let mut withdrawn_stake = self.staking_pool.request_withdraw_stake(staked_oct, ctx);//update
     let withdraw_amount = withdrawn_stake.value();
     let reward_amount = withdraw_amount - principal_amount;
     self.next_epoch_stake = self.next_epoch_stake - withdraw_amount;
@@ -433,7 +439,7 @@ public(package) fun request_withdraw_stake(
         principal_amount,
         reward_amount,
     });
-    ///add
+    //add
     if(lock){
         let withdrawn_reward = withdrawn_stake.split(reward_amount);
 
@@ -988,7 +994,7 @@ public(package) fun get_staking_pool_ref(self: &Validator): &StakingPool {
 /// Create a new validator from the given `ValidatorMetadata`, called by both `new` and `new_for_testing`.
 fun new_from_metadata(
     metadata: ValidatorMetadata,
-    revenue_receiving_address,
+    revenue_receiving_address:address,
     only_validator_staking:bool,
     gas_price: u64,
     commission_rate: u64,
@@ -1007,8 +1013,10 @@ fun new_from_metadata(
         // At the epoch change where this validator is actually added to the
         // active validator set, the voting power will be updated accordingly.
         voting_power: 0,
-        revenue_receiving_address,///add
-        only_validator_staking,///add
+        //add fun
+        revenue_receiving_address,
+        //add fun
+        only_validator_staking,
         operation_cap_id,
         gas_price,
         staking_pool,
@@ -1076,7 +1084,7 @@ public(package) fun new_for_testing(
             &mut validator,
             balance,
             sui_address, // give the stake to the validator
-            false,///add
+            false,//add
             ctx,
         );
     });

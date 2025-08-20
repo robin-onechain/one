@@ -38,15 +38,17 @@
 /// inconsistent with the version of SuiSystemStateInner. This is fine as long as we don't use the Validator version to determine
 /// the SuiSystemStateInner version, or vice versa.
 
-module one_system::sui_system;
+module one_system::one_system;
 
 use one::balance::Balance;
 use one::coin::Coin;
+use one::clock::Clock;
 use one::dynamic_field;
 use one::oct::OCT;
 use one::table::Table;
 use one::vec_map::VecMap;
 use one::coin_vesting::CoinVesting;
+use one_system::supper_committee::Proposal;
 use one_system::stake_subsidy::StakeSubsidy;
 use one_system::staking_pool::{StakedOct, FungibleStakedOct, PoolTokenExchangeRate};
 use one_system::sui_system_state_inner::{
@@ -78,7 +80,7 @@ const EWrongInnerVersion: u64 = 1;
 /// Create a new SuiSystemState object and make it shared.
 /// This function will be called only once in genesis.
 public(package) fun create(
-    id: UID,
+    //id: UID,
     validators: vector<Validator>,
     storage_fund: Balance<OCT>,
     protocol_version: u64,
@@ -87,6 +89,7 @@ public(package) fun create(
     stake_subsidy: StakeSubsidy,
     ctx: &mut TxContext,
 ) {
+    let id = one::object::new(ctx); //addno
     let system_state = sui_system_state_inner::create(
         validators,
         storage_fund,
@@ -107,7 +110,8 @@ public(package) fun create(
 
 // ==== entry functions ====
 
-/// add
+// add
+#[allow(lint(public_entry))]
 public entry fun create_update_trusted_validator_proposal(
     wrapper: &mut SuiSystemState,
     cap: &UnverifiedValidatorOperationCap,
@@ -120,6 +124,7 @@ public entry fun create_update_trusted_validator_proposal(
     self.create_update_trusted_validator_proposal(cap,operate, validator, clock, ctx);
 }
 
+#[allow(lint(public_entry))]
 public entry fun create_update_only_trusted_validator_proposal(
     wrapper: &mut SuiSystemState,
     cap: &UnverifiedValidatorOperationCap,
@@ -131,6 +136,7 @@ public entry fun create_update_only_trusted_validator_proposal(
     self.create_update_only_trusted_validator_proposal(cap, only_trusted_validator, clock, ctx)
 }
 
+#[allow(lint(public_entry))]
 public entry fun create_update_only_validator_staking_proposal(
     wrapper: &mut SuiSystemState,
     cap: &UnverifiedValidatorOperationCap,
@@ -142,6 +148,7 @@ public entry fun create_update_only_validator_staking_proposal(
     self.create_update_only_validator_staking_proposal(cap,only_validator_staking, clock, ctx);
 }
 
+#[allow(lint(public_entry))]
 public entry fun vote_proposal(
     wrapper: &mut SuiSystemState,
     cap: &UnverifiedValidatorOperationCap,
@@ -198,6 +205,7 @@ public entry fun request_add_validator_candidate(
             p2p_address,
             primary_address,
             worker_address,
+            revenue_receiving_address,
             gas_price,
             commission_rate,
             ctx,
@@ -299,6 +307,7 @@ public entry fun request_add_stake(
 }
 
 ///add
+#[allow(lint(public_entry))]
 public entry fun request_add_val_stake(
     wrapper: &mut SuiSystemState,
     cap: &UnverifiedValidatorOperationCap,
@@ -367,7 +376,7 @@ public entry fun request_withdraw_stake(
 ) {
     //let withdrawn_stake = wrapper.request_withdraw_stake_non_entry(staked_oct, ctx);
     //transfer::public_transfer(withdrawn_stake.into_coin(ctx), ctx.sender());
-    ///update
+    //update
     let (withdrawn_stake,coin_vesting) = wrapper.request_withdraw_stake_non_entry(staked_oct, ctx);
     transfer::public_transfer(withdrawn_stake.into_coin(ctx), ctx.sender());
     if(coin_vesting.is_some()){
@@ -400,7 +409,7 @@ public fun request_withdraw_stake_non_entry(
     wrapper: &mut SuiSystemState,
     staked_oct: StakedOct,
     ctx: &mut TxContext,
-): (Balance<OCT>,Option<CoinVesting<OCT>>) {///update
+): (Balance<OCT>,Option<CoinVesting<OCT>>) {//update
     wrapper.load_system_state_mut().request_withdraw_stake(staked_oct, ctx)
 }
 

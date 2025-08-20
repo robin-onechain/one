@@ -16,13 +16,13 @@ source = { local = "../move-stdlib" }
 
 [[move.package]]
 id = "One"
-source = { local = "../sui-framework" }
+source = { local = "../one-framework" }
 
 dependencies = [
   { id = "MoveStdlib", name = "MoveStdlib" },
 ]
 
 [move.toolchain-version]
-compiler-version = "1.0.0"
+compiler-version = "1.0.2"
 edition = "2024.beta"
 flavor = "one"

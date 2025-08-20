@@ -80,6 +80,8 @@ public struct StakedOct has key, store {
     stake_activation_epoch: u64,
     /// The staked OCT tokens.
     principal: Balance<OCT>,
+    /// coin lock
+    lock: bool, //add
 }
 
 /// An alternative to `StakedOct` that holds the pool token amount instead of the SUI balance.
@@ -132,6 +134,7 @@ public(package) fun request_add_stake(
     pool: &mut StakingPool,
     stake: Balance<OCT>,
     stake_activation_epoch: u64,
+    lock: bool,//add
     ctx: &mut TxContext,
 ): StakedOct {
     let sui_amount = stake.value();
@@ -144,6 +147,7 @@ public(package) fun request_add_stake(
         pool_id: object::id(pool),
         stake_activation_epoch,
         principal: stake,
+        lock, //add
     }
 }
 
@@ -272,7 +276,7 @@ public(package) fun convert_to_fungible_staked_oct(
     staked_oct: StakedOct,
     ctx: &mut TxContext,
 ): FungibleStakedOct {
-    let StakedOct { id, pool_id, stake_activation_epoch, principal } = staked_oct;
+    let StakedOct { id, pool_id, stake_activation_epoch, principal,lock:_ } = staked_oct;
 
     assert!(pool_id == object::id(pool), EWrongPool);
     assert!(ctx.epoch() >= stake_activation_epoch, ECannotMintFungibleStakedOctYet);
@@ -449,6 +453,9 @@ public fun fungible_staked_oct_pool_id(fungible_staked_oct: &FungibleStakedOct):
 /// Allows calling `.amount()` on `StakedOct` to invoke `staked_oct_amount`
 public use fun staked_oct_amount as StakedOct.amount;
 
+//add
+public fun lock(staked_oct:&StakedOct):bool{staked_oct.lock}
+
 /// Returns the principal amount of `StakedOct`.
 public fun staked_oct_amount(staked_oct: &StakedOct): u64 { staked_oct.principal.value() }
 
@@ -526,6 +533,7 @@ public fun split(self: &mut StakedOct, split_amount: u64, ctx: &mut TxContext): 
         pool_id: self.pool_id,
         stake_activation_epoch: self.stake_activation_epoch,
         principal: self.principal.split(split_amount),
+        lock:self.lock,
     }
 }
 

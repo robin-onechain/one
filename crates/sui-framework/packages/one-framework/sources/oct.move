@@ -30,12 +30,12 @@ public struct OCT has drop {}
 #[allow(unused_function)]
 /// Register the `OCT` Coin to acquire its `Supply`.
 /// This should be called only once during genesis creation.
-fun new(ctx: &mut TxContext): Balance<OCT> {
+fun new(otw: OCT,ctx: &mut TxContext): Balance<OCT> {
     assert!(ctx.sender() == @0x0, ENotSystemAddress);
     assert!(ctx.epoch() == 0, EAlreadyMinted);
 
     let (treasury, metadata) = coin::create_currency(
-        OCT {},
+        otw,//addno
         9,
         b"OCT",
         b"OCT",

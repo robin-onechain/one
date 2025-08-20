@@ -11,7 +11,7 @@ use one::oct::OCT;
 use one::table::{Self, Table};
 use one::table_vec::{Self, TableVec};
 use one::vec_map::{Self, VecMap};
-use one::vec_set::VecSet;
+use one::vec_set::{Self,VecSet};
 use one_system::staking_pool::{
     PoolTokenExchangeRate,
     StakedOct,
@@ -23,7 +23,7 @@ use one_system::validator::{Validator, staking_pool_id, sui_address};
 use one_system::validator_cap::{UnverifiedValidatorOperationCap, ValidatorOperationCap};
 use one_system::validator_wrapper::ValidatorWrapper;
 use one_system::voting_power;
-use one::coin_vesting::CoinVesting;///add
+use one::coin_vesting::CoinVesting;//add
 
 
 // Errors
@@ -174,7 +174,7 @@ public(package) fun new(
         staking_pool_mappings.add(v.staking_pool_id(), v.sui_address());
     });
 
-    ///update
+    //update
     let mut trusted_validators = vec_set::empty<address>();
     init_active_validators.do_ref!(|val|trusted_validators.insert(val.sui_address()) );
 
@@ -243,6 +243,20 @@ public(package) fun execute_update_trusted_validators_action(
         }
     }
 }
+//add
+fun remove_validator(
+    self: &mut ValidatorSet,
+    validator_address:address,
+){
+    let mut validator_index_opt = find_validator(&self.active_validators, validator_address);
+    assert!(validator_index_opt.is_some(), ENotAValidator);
+    let validator_index = validator_index_opt.extract();
+    assert!(
+        !self.pending_removals.contains(&validator_index),
+        EValidatorAlreadyRemoved
+    );
+    self.pending_removals.push_back(validator_index);
+}
 
 public(package) fun create_update_only_validator_staking_action(
     self: &ValidatorSet,
@@ -269,7 +283,7 @@ public(package) fun execute_update_only_validator_staking_action(
     validator.set_only_validator_staking(action.only_validator_staking);
 }
 
-///add end
+//add end
 
 // ==== functions to add or remove validators ====
 
@@ -323,7 +337,7 @@ public(package) fun request_add_validator(self: &mut ValidatorSet, ctx: &TxConte
     let validator_address = ctx.sender();
     assert!(self.validator_candidates.contains(validator_address), ENotValidatorCandidate);
     
-    assert!(self.is_trusted_validator(validator_address),EOnlyTrustValidatorJoin);///add
+    assert!(self.is_trusted_validator(validator_address),EOnlyTrustValidatorJoin);//add
 
     let validator = self.validator_candidates.remove(validator_address).destroy();
     assert!(
@@ -402,13 +416,14 @@ public(package) fun request_add_stake(
     self: &mut ValidatorSet,
     validator_address: address,
     stake: Balance<OCT>,
+    is_validator: bool,
     ctx: &mut TxContext,
 ): StakedOct {
     let sui_amount = stake.value();
     assert!(sui_amount >= MIN_STAKING_THRESHOLD, EStakingBelowThreshold);
     self
         .get_candidate_or_active_validator_mut(validator_address)
-        .request_add_stake(stake, ctx.sender(), ctx)
+        .request_add_stake(stake, ctx.sender(), is_validator,ctx)
 }
 
 /// Called by `sui_system`, to withdraw some share of a stake from the validator. The share to withdraw
@@ -420,8 +435,8 @@ public(package) fun request_add_stake(
 public(package) fun request_withdraw_stake(
     self: &mut ValidatorSet,
     staked_oct: StakedOct,
-    ctx: &TxContext,
-): (Balance<OCT>,Option<CoinVesting<OCT>>) {///update
+    ctx: &mut TxContext,
+): (Balance<OCT>,Option<CoinVesting<OCT>>) {//update
     let staking_pool_id = staked_oct.pool_id();
     let validator = if (self.staking_pool_mappings.contains(staking_pool_id)) {
         // This is an active validator.
@@ -1410,6 +1425,7 @@ fun distribute_reward(
             let rewards_stake = validator.request_add_stake(
                 validator_reward,
                 validator_address,
+                false,
                 ctx,
             );
             transfer::public_transfer(rewards_stake, validator_address);
