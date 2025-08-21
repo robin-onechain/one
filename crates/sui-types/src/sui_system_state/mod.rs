@@ -190,7 +190,6 @@ pub trait SuiSystemStateTrait {
 /// implementation in the inner types.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[enum_dispatch(SuiSystemStateTrait)]
-    let id = wrapper.id.id.bytes;
 pub enum SuiSystemState {
     V1(SuiSystemStateInnerV1),
     V2(SuiSystemStateInnerV2),
