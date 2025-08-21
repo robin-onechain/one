@@ -86,7 +86,7 @@ fn main() {
 
     drop(metrics_rt);
 
-    info!("Sui Node version: {VERSION}");
+    info!("One Node version: {VERSION}");
     info!(
         "Supported protocol versions: {:?}",
         config.supported_protocol_versions
