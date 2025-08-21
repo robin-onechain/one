@@ -2,26 +2,32 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{SuiSystemState, SuiSystemStateTrait};
-use crate::base_types::{AuthorityName, ObjectID, SuiAddress};
-use crate::committee::{CommitteeWithNetworkMetadata, NetworkMetadata};
-use crate::crypto::NetworkPublicKey;
-use crate::dynamic_field::get_dynamic_field_from_store;
-use crate::error::SuiError;
-use crate::id::ID;
-use crate::multiaddr::Multiaddr;
-use crate::storage::ObjectStore;
-use crate::sui_serde::BigInt;
-use crate::sui_serde::Readable;
-use crate::sui_system_state::get_validator_from_table;
-use fastcrypto::encoding::Base64;
-use fastcrypto::traits::ToFromBytes;
+use crate::{
+    base_types::{AuthorityName, ObjectID, SuiAddress},
+    committee::{CommitteeWithNetworkMetadata, NetworkMetadata},
+    crypto::NetworkPublicKey,
+    dynamic_field::get_dynamic_field_from_store,
+    error::SuiError,
+    id::ID,
+    multiaddr::Multiaddr,
+    storage::ObjectStore,
+    sui_serde::{BigInt, Readable},
+    sui_system_state::get_validator_from_table,
+};
+use fastcrypto::{encoding::Base64, traits::ToFromBytes};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-/// This is the JSON-RPC type for the SUI system state object.
+/// This is the JSON-RPC type for the OCT system state object.
 /// It flattens all fields to make them top-level fields such that it as minimum
-/// dependencies to the internal data structures of the SUI system state type.
+/// dependencies to the internal data structures of the OCT system state type.
+
+#[derive(Default, Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SuiSupperCommitteeSummary {
+    pub proposal_list: Vec<ObjectID>,
+}
 
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
@@ -119,7 +125,7 @@ pub struct SuiSystemStateSummary {
     pub validator_low_stake_grace_period: u64,
 
     // Stake subsidy information
-    /// Balance of SUI set aside for stake subsidies that will be drawn down over time.
+    /// Balance of OCT set aside for stake subsidies that will be drawn down over time.
     #[schemars(with = "BigInt<u64>")]
     #[serde_as(as = "Readable<BigInt<u64>, _>")]
     pub stake_subsidy_balance: u64,
@@ -141,6 +147,9 @@ pub struct SuiSystemStateSummary {
     /// period. Expressed in basis points.
     pub stake_subsidy_decrease_rate: u16,
 
+    // Supper committee
+    pub supper_committee: SuiSupperCommitteeSummary,
+
     // Validator set
     /// Total amount of stake from all active validators at the beginning of the epoch.
     #[schemars(with = "BigInt<u64>")]
@@ -159,7 +168,7 @@ pub struct SuiSystemStateSummary {
     #[schemars(with = "Vec<BigInt<u64>>")]
     #[serde_as(as = "Vec<Readable<BigInt<u64>, _>>")]
     pub pending_removals: Vec<u64>,
-    /// ID of the object that maps from staking pool's ID to the sui address of a validator.
+    /// ID of the object that maps from staking pool's ID to the OneChain address of a validator.
     pub staking_pool_mappings_id: ObjectID,
     /// Number of staking pool mappings.
     #[schemars(with = "BigInt<u64>")]
@@ -183,6 +192,9 @@ pub struct SuiSystemStateSummary {
     pub at_risk_validators: Vec<(SuiAddress, u64)>,
     /// A map storing the records of validator reporting each other.
     pub validator_report_records: Vec<(SuiAddress, Vec<SuiAddress>)>,
+
+    pub trusted_validators: Vec<SuiAddress>,
+    pub only_trusted_validator: bool,
 }
 
 impl SuiSystemStateSummary {
@@ -194,21 +206,11 @@ impl SuiSystemStateSummary {
                 let name = AuthorityName::from_bytes(&validator.protocol_pubkey_bytes).unwrap();
                 (
                     name,
-                    (
-                        validator.voting_power,
-                        NetworkMetadata {
-                            network_address: Multiaddr::try_from(validator.net_address.clone())
-                                .unwrap(),
-                            narwhal_primary_address: Multiaddr::try_from(
-                                validator.primary_address.clone(),
-                            )
-                            .unwrap(),
-                            network_public_key: NetworkPublicKey::from_bytes(
-                                &validator.network_pubkey_bytes,
-                            )
-                            .ok(),
-                        },
-                    ),
+                    (validator.voting_power, NetworkMetadata {
+                        network_address: Multiaddr::try_from(validator.net_address.clone()).unwrap(),
+                        narwhal_primary_address: Multiaddr::try_from(validator.primary_address.clone()).unwrap(),
+                        network_public_key: NetworkPublicKey::from_bytes(&validator.network_pubkey_bytes).ok(),
+                    }),
                 )
             })
             .collect();
@@ -216,7 +218,7 @@ impl SuiSystemStateSummary {
     }
 }
 
-/// This is the JSON-RPC type for the SUI validator. It flattens all inner structures
+/// This is the JSON-RPC type for the OCT validator. It flattens all inner structures
 /// to top-level fields so that they are decoupled from the internal definitions.
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone, JsonSchema)]
@@ -224,6 +226,7 @@ impl SuiSystemStateSummary {
 pub struct SuiValidatorSummary {
     // Metadata
     pub sui_address: SuiAddress,
+
     #[schemars(with = "Base64")]
     #[serde_as(as = "Base64")]
     pub protocol_pubkey_bytes: Vec<u8>,
@@ -264,6 +267,8 @@ pub struct SuiValidatorSummary {
     #[schemars(with = "BigInt<u64>")]
     #[serde_as(as = "Readable<BigInt<u64>, _>")]
     pub voting_power: u64,
+    pub revenue_receiving_address: SuiAddress,
+    pub only_validator_staking: bool,
     pub operation_cap_id: ObjectID,
     #[schemars(with = "BigInt<u64>")]
     #[serde_as(as = "Readable<BigInt<u64>, _>")]
@@ -292,7 +297,7 @@ pub struct SuiValidatorSummary {
     #[schemars(with = "Option<BigInt<u64>>")]
     #[serde_as(as = "Option<Readable<BigInt<u64>, _>>")]
     pub staking_pool_deactivation_epoch: Option<u64>,
-    /// The total number of SUI tokens in this pool.
+    /// The total number of OCT tokens in this pool.
     #[schemars(with = "BigInt<u64>")]
     #[serde_as(as = "Readable<BigInt<u64>, _>")]
     pub staking_pool_oct_balance: u64,
@@ -364,6 +369,9 @@ impl Default for SuiSystemStateSummary {
             validator_candidates_size: 0,
             at_risk_validators: vec![],
             validator_report_records: vec![],
+            supper_committee: SuiSupperCommitteeSummary::default(),
+            trusted_validators: vec![],
+            only_trusted_validator: true,
         }
     }
 }
@@ -393,6 +401,8 @@ impl Default for SuiValidatorSummary {
             next_epoch_primary_address: None,
             next_epoch_worker_address: None,
             voting_power: 0,
+            revenue_receiving_address: SuiAddress::default(),
+            only_validator_staking: true,
             operation_cap_id: ObjectID::ZERO,
             gas_price: 0,
             commission_rate: 0,
@@ -426,40 +436,30 @@ where
     S: ObjectStore + ?Sized,
 {
     // First try to find in active validator set.
-    let active_validator = system_state_summary
-        .active_validators
-        .iter()
-        .find(|v| v.staking_pool_id == pool_id);
+    let active_validator = system_state_summary.active_validators.iter().find(|v| v.staking_pool_id == pool_id);
     if let Some(active) = active_validator {
         return Ok(active.clone());
     }
     // Then try to find in pending active validator set.
     let pending_active_validators = system_state.get_pending_active_validators(object_store)?;
-    let pending_active = pending_active_validators
-        .iter()
-        .find(|v| v.staking_pool_id == pool_id);
+    let pending_active = pending_active_validators.iter().find(|v| v.staking_pool_id == pool_id);
     if let Some(pending) = pending_active {
         return Ok(pending.clone());
     }
     // After that try to find in inactive pools.
     let inactive_table_id = system_state_summary.inactive_pools_id;
-    if let Ok(inactive) =
-        get_validator_from_table(&object_store, inactive_table_id, &ID::new(pool_id))
-    {
+    if let Ok(inactive) = get_validator_from_table(&object_store, inactive_table_id, &ID::new(pool_id)) {
         return Ok(inactive);
     }
     // Finally look up the candidates pool.
-    let candidate_address: SuiAddress = get_dynamic_field_from_store(
-        &object_store,
-        system_state_summary.staking_pool_mappings_id,
-        &ID::new(pool_id),
-    )
-    .map_err(|err| {
-        SuiError::SuiSystemStateReadError(format!(
-            "Failed to load candidate address from pool mappings: {:?}",
-            err
-        ))
-    })?;
+    let candidate_address: SuiAddress =
+        get_dynamic_field_from_store(&object_store, system_state_summary.staking_pool_mappings_id, &ID::new(pool_id))
+            .map_err(|err| {
+                SuiError::SuiSystemStateReadError(format!(
+                    "Failed to load candidate address from pool mappings: {:?}",
+                    err
+                ))
+            })?;
     let candidate_table_id = system_state_summary.validator_candidates_id;
     get_validator_from_table(&object_store, candidate_table_id, &candidate_address)
 }

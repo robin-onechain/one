@@ -1,25 +1,30 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::epoch_start_sui_system_state::EpochStartValidatorInfoV1;
-use super::sui_system_state_inner_v1::ValidatorV1;
-use super::sui_system_state_summary::{SuiSystemStateSummary, SuiValidatorSummary};
-use super::{AdvanceEpochParams, SuiSystemStateTrait};
-use crate::balance::Balance;
-use crate::base_types::SuiAddress;
-use crate::collection_types::{Bag, Table, TableVec, VecMap, VecSet};
-use crate::committee::{CommitteeWithNetworkMetadata, NetworkMetadata};
-use crate::error::SuiError;
-use crate::gas::GasCostSummary;
-use crate::storage::ObjectStore;
-use crate::sui_system_state::epoch_start_sui_system_state::EpochStartSystemState;
-use crate::sui_system_state::get_validators_from_table_vec;
-use crate::sui_system_state::sui_system_state_inner_v1::{
-    StakeSubsidyV1, StorageFundV1, ValidatorSetV1,
+use super::{
+    epoch_start_sui_system_state::EpochStartValidatorInfoV1,
+    sui_system_state_inner_v1::ValidatorV1,
+    sui_system_state_summary::{SuiSystemStateSummary, SuiValidatorSummary},
+    AdvanceEpochParams,
+    SuiSystemStateTrait,
+};
+use crate::{
+    balance::Balance,
+    base_types::SuiAddress,
+    gas::GasCostSummary,
+    collection_types::{Bag, Table, TableVec, VecMap, VecSet},
+    committee::{CommitteeWithNetworkMetadata, NetworkMetadata},
+    error::SuiError,
+    storage::ObjectStore,
+    sui_system_state::{
+        epoch_start_sui_system_state::EpochStartSystemState,
+        get_validators_from_table_vec,
+        sui_system_state_inner_v1::{StakeSubsidyV1, StorageFundV1, SuiSupperCommittee, ValidatorSetV1},
+    },
 };
 use serde::{Deserialize, Serialize};
 
-/// Rust version of the Move one::one_system::SystemParametersV2 type
+/// Rust version of the Move sui::sui_system::SystemParametersV2 type
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct SystemParametersV2 {
     /// The duration of an epoch, in milliseconds.
@@ -54,12 +59,13 @@ pub struct SystemParametersV2 {
     pub extra_fields: Bag,
 }
 
-/// Rust version of the Move one_system::one_system::SuiSystemStateInnerV2 type
+/// Rust version of the Move sui_system::sui_system::SuiSystemStateInnerV2 type
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct SuiSystemStateInnerV2 {
     pub epoch: u64,
     pub protocol_version: u64,
     pub system_state_version: u64,
+    pub supper_committee: SuiSupperCommittee,
     pub validators: ValidatorSetV1,
     pub storage_fund: StorageFundV1,
     pub parameters: SystemParametersV2,
@@ -117,11 +123,9 @@ impl SuiSystemStateTrait for SuiSystemStateInnerV2 {
     fn advance_epoch_safe_mode(&mut self, params: &AdvanceEpochParams) {
         self.epoch = params.epoch;
         self.safe_mode = true;
-        self.safe_mode_storage_rewards
-            .deposit_for_safe_mode(params.storage_charge);
+        self.safe_mode_storage_rewards.deposit_for_safe_mode(params.storage_charge);
         self.safe_mode_storage_rebates += params.storage_rebate;
-        self.safe_mode_computation_rewards
-            .deposit_for_safe_mode(params.computation_charge);
+        self.safe_mode_computation_rewards.deposit_for_safe_mode(params.computation_charge);
         self.safe_mode_non_refundable_storage_fee += params.non_refundable_storage_fee;
         self.epoch_start_timestamp_ms = params.epoch_start_timestamp_ms;
         self.protocol_version = params.next_protocol_version.as_u64();
@@ -137,14 +141,11 @@ impl SuiSystemStateTrait for SuiSystemStateInnerV2 {
                 let name = verified_metadata.sui_pubkey_bytes();
                 (
                     name,
-                    (
-                        validator.voting_power,
-                        NetworkMetadata {
-                            network_address: verified_metadata.net_address.clone(),
-                            narwhal_primary_address: verified_metadata.primary_address.clone(),
-                            network_public_key: Some(verified_metadata.network_pubkey.clone()),
-                        },
-                    ),
+                    (validator.voting_power, NetworkMetadata {
+                        network_address: verified_metadata.net_address.clone(),
+                        narwhal_primary_address: verified_metadata.primary_address.clone(),
+                        network_public_key: Some(verified_metadata.network_pubkey.clone()),
+                    }),
                 )
             })
             .collect();
@@ -157,12 +158,8 @@ impl SuiSystemStateTrait for SuiSystemStateInnerV2 {
     ) -> Result<Vec<SuiValidatorSummary>, SuiError> {
         let table_id = self.validators.pending_active_validators.contents.id;
         let table_size = self.validators.pending_active_validators.contents.size;
-        let validators: Vec<ValidatorV1> =
-            get_validators_from_table_vec(&object_store, table_id, table_size)?;
-        Ok(validators
-            .into_iter()
-            .map(|v| v.into_sui_validator_summary())
-            .collect())
+        let validators: Vec<ValidatorV1> = get_validators_from_table_vec(&object_store, table_id, table_size)?;
+        Ok(validators.into_iter().map(|v| v.into_sui_validator_summary()).collect())
     }
 
     fn into_epoch_start_state(self) -> EpochStartSystemState {
@@ -203,38 +200,22 @@ impl SuiSystemStateTrait for SuiSystemStateInnerV2 {
             epoch,
             protocol_version,
             system_state_version,
+            supper_committee,
             validators:
                 ValidatorSetV1 {
                     total_stake,
                     active_validators,
                     pending_active_validators:
                         TableVec {
-                            contents:
-                                Table {
-                                    id: pending_active_validators_id,
-                                    size: pending_active_validators_size,
-                                },
+                            contents: Table { id: pending_active_validators_id, size: pending_active_validators_size },
                         },
                     pending_removals,
-                    staking_pool_mappings:
-                        Table {
-                            id: staking_pool_mappings_id,
-                            size: staking_pool_mappings_size,
-                        },
-                    inactive_validators:
-                        Table {
-                            id: inactive_pools_id,
-                            size: inactive_pools_size,
-                        },
-                    validator_candidates:
-                        Table {
-                            id: validator_candidates_id,
-                            size: validator_candidates_size,
-                        },
-                    at_risk_validators:
-                        VecMap {
-                            contents: at_risk_validators,
-                        },
+                    staking_pool_mappings: Table { id: staking_pool_mappings_id, size: staking_pool_mappings_size },
+                    inactive_validators: Table { id: inactive_pools_id, size: inactive_pools_size },
+                    validator_candidates: Table { id: validator_candidates_id, size: validator_candidates_size },
+                    at_risk_validators: VecMap { contents: at_risk_validators },
+                    trusted_validators: VecSet { contents: trusted_validators },
+                    only_trusted_validator,
                     extra_fields: _,
                 },
             storage_fund,
@@ -251,10 +232,7 @@ impl SuiSystemStateTrait for SuiSystemStateInnerV2 {
                     extra_fields: _,
                 },
             reference_gas_price,
-            validator_report_records:
-                VecMap {
-                    contents: validator_report_records,
-                },
+            validator_report_records: VecMap { contents: validator_report_records },
             stake_subsidy:
                 StakeSubsidyV1 {
                     balance: stake_subsidy_balance,
@@ -276,9 +254,7 @@ impl SuiSystemStateTrait for SuiSystemStateInnerV2 {
             epoch,
             protocol_version,
             system_state_version,
-            storage_fund_total_object_storage_rebates: storage_fund
-                .total_object_storage_rebates
-                .value(),
+            storage_fund_total_object_storage_rebates: storage_fund.total_object_storage_rebates.value(),
             storage_fund_non_refundable_balance: storage_fund.non_refundable_balance.value(),
             reference_gas_price,
             safe_mode,
@@ -293,10 +269,7 @@ impl SuiSystemStateTrait for SuiSystemStateInnerV2 {
             stake_subsidy_balance: stake_subsidy_balance.value(),
             stake_subsidy_current_distribution_amount,
             total_stake,
-            active_validators: active_validators
-                .into_iter()
-                .map(|v| v.into_sui_validator_summary())
-                .collect(),
+            active_validators: active_validators.into_iter().map(|v| v.into_sui_validator_summary()).collect(),
             pending_active_validators_id,
             pending_active_validators_size,
             pending_removals,
@@ -306,14 +279,8 @@ impl SuiSystemStateTrait for SuiSystemStateInnerV2 {
             inactive_pools_size,
             validator_candidates_id,
             validator_candidates_size,
-            at_risk_validators: at_risk_validators
-                .into_iter()
-                .map(|e| (e.key, e.value))
-                .collect(),
-            validator_report_records: validator_report_records
-                .into_iter()
-                .map(|e| (e.key, e.value.contents))
-                .collect(),
+            at_risk_validators: at_risk_validators.into_iter().map(|e| (e.key, e.value)).collect(),
+            validator_report_records: validator_report_records.into_iter().map(|e| (e.key, e.value.contents)).collect(),
             max_validator_count,
             min_validator_joining_stake,
             validator_low_stake_threshold,
@@ -321,6 +288,9 @@ impl SuiSystemStateTrait for SuiSystemStateInnerV2 {
             validator_low_stake_grace_period,
             stake_subsidy_period_length,
             stake_subsidy_decrease_rate,
+            supper_committee: supper_committee.into_supper_committee_summary(),
+            trusted_validators,
+            only_trusted_validator,
         }
     }
 }

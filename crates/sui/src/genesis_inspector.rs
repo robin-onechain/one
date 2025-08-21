@@ -310,7 +310,7 @@ fn display_validator(validator: &SuiValidatorGenesis) {
     );
     println!(
         "Staking Pool Oct Balance: {:?}",
-        validator.staking_pool.sui_balance
+        validator.staking_pool.oct_balance
     );
     println!(
         "Rewards Pool: {}",
