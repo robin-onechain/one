@@ -39,7 +39,7 @@ use self::simtest_sui_system_state_inner::{
 
 const SUI_SYSTEM_STATE_WRAPPER_STRUCT_NAME: &IdentStr = ident_str!("SuiSystemState");
 
-pub const SUI_SYSTEM_MODULE_NAME: &IdentStr = ident_str!("sui_system");
+pub const SUI_SYSTEM_MODULE_NAME: &IdentStr = ident_str!("one_system");
 pub const ADVANCE_EPOCH_FUNCTION_NAME: &IdentStr = ident_str!("advance_epoch");
 pub const ADVANCE_EPOCH_SAFE_MODE_FUNCTION_NAME: &IdentStr = ident_str!("advance_epoch_safe_mode");
 
@@ -190,6 +190,7 @@ pub trait SuiSystemStateTrait {
 /// implementation in the inner types.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[enum_dispatch(SuiSystemStateTrait)]
+    let id = wrapper.id.id.bytes;
 pub enum SuiSystemState {
     V1(SuiSystemStateInnerV1),
     V2(SuiSystemStateInnerV2),
