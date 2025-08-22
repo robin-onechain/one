@@ -39,9 +39,10 @@ use typed_store::Map;
 use crate::{
     authority::{
         authority_per_epoch_store::AuthorityPerEpochStore,
-        epoch_start_configuration::{EpochStartConfigTrait, EpochStartConfiguration},
+        epoch_start_configuration::EpochStartConfiguration,
         shared_object_congestion_tracker::CongestionPerObjectDebt,
     },
+    //{EpochStartConfigTrait, EpochStartConfiguration},
     checkpoints::{CheckpointHeight, PendingCheckpointV2},
     consensus_handler::{SequencedConsensusTransactionKey, VerifiedSequencedConsensusTransaction},
     epoch::{
@@ -382,10 +383,10 @@ impl ConsensusOutputCache {
             .get_all_deferred_transactions()
             .expect("load deferred transactions cannot fail");
 
-        assert!(
-            epoch_start_configuration.is_data_quarantine_active_from_beginning_of_epoch(),
-            "This version of sui-node can only run after data quarantining has been enabled. Please run version 1.45.0 or later to the end of the current epoch and retry"
-        );
+        // assert!(
+        //     epoch_start_configuration.is_data_quarantine_active_from_beginning_of_epoch(),
+        //     "This version of sui-node can only run after data quarantining has been enabled. Please run version 1.45.0 or later to the end of the current epoch and retry"
+        // );
 
         let executed_in_epoch_cache_capacity = 50_000;
 
